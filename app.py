@@ -26,7 +26,7 @@ if uploaded_file is not None:
     st.info("Transcrevendo o áudio, por favor aguarde...")
 
     # Carrega o modelo Whisper otimizado (faster-whisper) com uso forçado da CPU
-    model = WhisperModel("base", device="cpu", compute_type="int8", hf_token=os.environ["HF_TOKEN"])
+    model = WhisperModel("base", device="cpu", compute_type="int8")
     segments, _ = model.transcribe(tmp_path)
 
     # Junta os textos com espaçamento entre frases
