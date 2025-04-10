@@ -22,7 +22,7 @@ Faça upload de um arquivo `.mp3` e receba a transcrição completa.
 # Seletor de modelo
 model_size = st.selectbox(
     "Escolha o modelo Whisper:",
-    options=["tiny", "base", "small", "medium", "large-v2"],
+    options=["tiny", "base", "small"],
     index=2  # small como padrão para melhor equilíbrio qualidade/performance
 )
 
