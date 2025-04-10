@@ -9,8 +9,8 @@ import os
 os.environ["HF_TOKEN"] = st.secrets["HUGGINGFACE_HUB_TOKEN"]
 
 # Título e descrição do app
-st.set_page_config(page_title="Transcritor de Áudio com Whisper", layout="centered")
-st.title("🎧 Transcritor de Áudio com Whisper")
+st.set_page_config(page_title="Transcritor de Áudio", layout="centered")
+st.title("🎧 Transcritor de Áudio")
 st.markdown("Faça upload de um arquivo `.mp3` e receba a transcrição formatada.")
 
 # Upload do arquivo de áudio
