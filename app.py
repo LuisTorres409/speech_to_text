@@ -7,7 +7,7 @@ import time
 from typing import List, Dict, Any
 
 # Token do Hugging Face via secrets
-os.environ["HF_TOKEN"] = st.secrets.get("HUGGINGFACE_HUB_TOKEN", "")
+#os.environ["HF_TOKEN"] = st.secrets.get("HUGGINGFACE_HUB_TOKEN", "")
 
 # Configuração da página
 st.set_page_config(page_title="Transcritor de Áudio", layout="centered")
@@ -51,17 +51,15 @@ def run_transcription():
         tmp_path = tmp.name
     
     try:
-        # Barra de progresso
-        progress_bar = st.progress(0)
+        # Barra de progresso e status
+        progress_bar = st.progress(0, text="0% concluído")
         status_text = st.empty()
-        status_text.text("Iniciando processamento...")
-        
-        # Fase 1: Carregamento do modelo
-        status_text.text("Carregando modelo Whisper...")
-        progress_bar.progress(10)
+        status_text.text("🔧 Preparando ambiente...")
         
         start_time = time.time()
         
+        # Fase 1: Carregamento do modelo (sem porcentagem fixa ainda)
+        status_text.text("⏳ Carregando modelo...")
         model = WhisperModel(
             model_size,
             device="cpu",
@@ -69,10 +67,10 @@ def run_transcription():
             download_root="./models"
         )
         
-        progress_bar.progress(30)
-        status_text.text("Modelo carregado. Iniciando transcrição...")
-
-        # Configurações de transcrição
+        # Fase 2: Início da transcrição (começa a contar de 0%)
+        status_text.text("🎙️ Iniciando transcrição (0%)...")
+        progress_bar.progress(0.0, text="0% concluído")
+        
         segments, info = model.transcribe(
             tmp_path,
             vad_filter=False,
@@ -84,15 +82,31 @@ def run_transcription():
             word_timestamps=False
         )
 
-        # Processamento dos segmentos
+        # Fase 3: Processamento dos segmentos (0%-90%)
         full_transcription = []
         segment_details = []
+        total_segments = sum(1 for _ in segments)  # Contagem total de segmentos
+        segments = model.transcribe(  # Re-executar para iterar novamente
+            tmp_path,
+            vad_filter=False,
+            beam_size=5,
+            chunk_length=30,
+            no_speech_threshold=0.6,
+            temperature=(0.0, 0.2, 0.4, 0.6),
+            condition_on_previous_text=False,
+            word_timestamps=False
+        )[0]  # Pegar apenas os segmentos
+        
+        processed_segments = 0
         
         for segment in segments:
-            progress = min(30 + (segment.end / info.duration * 60), 90)
-            progress_bar.progress(int(progress))
+            processed_segments += 1
+            # Calcula progresso baseado na proporção de segmentos processados (0% a 90%)
+            progress = (processed_segments / total_segments *0.9)  # Até 90%
+            current_percent = min(progress, 0.9)
             
-            status_text.text(f"Transcrevendo... {segment.end:.1f}/{info.duration:.1f}s")
+            progress_bar.progress(current_percent, text=f"{int(current_percent * 100)}% concluído")
+            status_text.text(f"📝 Transcrevendo ({int(current_percent * 100)}%)...")
             
             full_transcription.append(segment.text.strip())
             segment_details.append({
@@ -101,17 +115,15 @@ def run_transcription():
                 "text": segment.text.strip()
             })
 
-        # Finalização
+        # Fase 4: Finalização (90%-100%)
+        status_text.text("✨ Finalizando (100%)...")
+        progress_bar.progress(1.0, text="100% concluído")
+        time.sleep(0.5)
+        
+        # Armazena resultados
         formatted_transcription = "\n\n".join(full_transcription)
         processing_time = time.time() - start_time
         
-        progress_bar.progress(100)
-        status_text.text("Finalizando...")
-        time.sleep(0.5)
-        progress_bar.empty()
-        status_text.empty()
-
-        # Armazena os resultados no session state
         st.session_state.transcription_data = {
             "transcription": formatted_transcription,
             "details": segment_details,
@@ -121,12 +133,14 @@ def run_transcription():
         st.session_state.transcription_done = True
         
     except Exception as e:
-        st.error(f"Erro durante a transcrição: {str(e)}")
+        st.error(f"❌ Erro durante a transcrição: {str(e)}")
     finally:
         try:
             os.remove(tmp_path)
         except:
             pass
+        progress_bar.empty()
+        status_text.empty()
 
 # Botão de transcrição (só aparece se houver arquivo)
 if uploaded_file is not None and not st.session_state.transcription_done:
