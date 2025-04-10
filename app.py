@@ -4,13 +4,13 @@ import tempfile
 import os
 import json
 import time
-import pandas as pd  # Adicionado para criar a tabela
+import pandas as pd
 
 # Configuração da página
 st.set_page_config(page_title="Transcritor de Áudio", layout="centered")
 st.title("🎧 Transcritor de Áudio")
 st.markdown("""
-Faça upload de um arquivo de áudio e receba a transcrição completa.
+Faça upload de um arquivo de áudio ou grave diretamente e receba a transcrição completa.
 
 > ⚠️ Áudios muito longos podem demorar para serem processados.
 """)
@@ -29,22 +29,42 @@ model_size = st.selectbox(
     key="model_select"
 )
 
-# Upload do áudio
-uploaded_file = st.file_uploader(
-    "Escolha um arquivo de áudio (.mp3, .wav)", 
-    type=["mp3", "wav"],
-    key="file_uploader"
+# Opção de entrada de áudio
+input_method = st.radio(
+    "Selecione o método de entrada:",
+    options=["Upload de arquivo", "Gravar áudio"],
+    index=0,
+    key="input_method"
 )
+
+audio_data = None
+
+if input_method == "Upload de arquivo":
+    # Upload do áudio
+    uploaded_file = st.file_uploader(
+        "Escolha um arquivo de áudio (.mp3, .wav)", 
+        type=["mp3", "wav"],
+        key="file_uploader"
+    )
+    if uploaded_file is not None:
+        st.audio(uploaded_file, format='audio/mp3')
+        audio_data = uploaded_file.getvalue()
+else:
+    # Gravador de áudio nativo do Streamlit
+    recorded_audio = st.audio_input("Clique para gravar um áudio:")
+    if recorded_audio is not None:
+        #st.audio(recorded_audio, format="audio/wav")
+        audio_data = recorded_audio.getvalue()
 
 def reset_transcription():
     """Reseta o estado da transcrição"""
     st.session_state.transcription_done = False
     st.session_state.transcription_data = None
 
-def run_transcription():
+def run_transcription(audio_bytes):
     """Executa o processo de transcrição"""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-        tmp.write(uploaded_file.getvalue())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        tmp.write(audio_bytes)
         tmp_path = tmp.name
     
     try:
@@ -139,11 +159,9 @@ def run_transcription():
         status_text.empty()
 
 # Interface principal
-if uploaded_file is not None and not st.session_state.transcription_done:
-    st.audio(uploaded_file, format='audio/mp3')
-    
+if audio_data is not None and not st.session_state.transcription_done:
     if st.button("🔊 Iniciar Transcrição", type="primary"):
-        run_transcription()
+        run_transcription(audio_data)
         st.rerun()
 
 elif st.session_state.transcription_done and st.session_state.transcription_data:
@@ -216,8 +234,8 @@ elif st.session_state.transcription_done and st.session_state.transcription_data
         reset_transcription()
         st.rerun()
 
-elif uploaded_file is None:
-    st.info("ℹ️ Faça upload de um arquivo de áudio para começar.")
+elif audio_data is None:
+    st.info("ℹ️ Faça upload de um arquivo de áudio ou grave um áudio para começar.")
 
-if uploaded_file is not None and not st.session_state.transcription_done:
+if audio_data is not None and not st.session_state.transcription_done:
     st.warning("⚠️ Altere as configurações antes de iniciar a transcrição. Mudanças após iniciar requerem nova transcrição.")
