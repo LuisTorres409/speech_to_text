@@ -4,48 +4,47 @@ import tempfile
 import os
 import json
 import time
+from typing import List, Dict, Any
+
+# Token do Hugging Face via secrets
+os.environ["HF_TOKEN"] = st.secrets.get("HUGGINGFACE_HUB_TOKEN", "")
 
 # Configuração da página
-st.set_page_config(page_title="Transcritor de Áudio Premium", layout="centered")
-st.title("🎧 Transcritor de Áudio Profissional")
+st.set_page_config(page_title="Transcritor de Áudio", layout="centered")
+st.title("🎧 Transcritor de Áudio")
 st.markdown("""
-Faça upload de arquivos de áudio para obter transcrições de alta qualidade.
+Faça upload de um arquivo `.mp3` e receba a transcrição completa.
 
-> 🔍 Para músicas ou áudios complexos, recomendo usar os modelos **medium** ou **large-v2**.
+> ⚠️ Áudios muito longos podem demorar para serem processados.
+> Certifique-se de que o áudio tenha uma boa qualidade para melhor desempenho.
 """)
 
 # Seletor de modelo
 model_size = st.selectbox(
-    "Selecione o modelo de transcrição:",
+    "Escolha o modelo Whisper:",
     options=["tiny", "base", "small", "medium", "large-v2"],
-    index=2,
-    help="Modelos maiores = melhor qualidade, porém mais lentos"
+    index=2  # small como padrão para melhor equilíbrio qualidade/performance
 )
 
 # Upload do áudio
-uploaded_file = st.file_uploader("Carregue seu arquivo de áudio", type=["mp3", "wav", "ogg"])
+uploaded_file = st.file_uploader("Escolha um arquivo de áudio (.mp3, .wav)", type=["mp3", "wav"])
 
 if uploaded_file is not None:
-    # Informações do arquivo
-    file_size = uploaded_file.size / (1024 * 1024)  # MB
-    st.success(f"✅ Arquivo carregado: {uploaded_file.name} ({file_size:.2f} MB)")
-    
-    # Barra de progresso
+    # Barra de progresso e status
     progress_bar = st.progress(0)
     status_text = st.empty()
-    status_text.text("Preparando ambiente...")
+    status_text.text("Iniciando processamento...")
     
-    # Cria arquivo temporário
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
         tmp.write(uploaded_file.read())
         tmp_path = tmp.name
-    
+
     st.audio(uploaded_file, format='audio/mp3')
     
     try:
-        # Fase 1: Carregamento do modelo
+        # Fase 1: Carregamento do modelo (10-30%)
         status_text.text("Carregando modelo Whisper...")
-        progress_bar.progress(15)
+        progress_bar.progress(10)
         
         start_time = time.time()
         
@@ -57,98 +56,91 @@ if uploaded_file is not None:
         )
         
         progress_bar.progress(30)
-        status_text.text("Modelo pronto. Iniciando transcrição...")
-        
-        # Configurações ORIGINAIS que garantiam boa qualidade
+        status_text.text("Modelo carregado. Iniciando transcrição...")
+
+        # Configurações IDÊNTICAS ao código original
         segments, info = model.transcribe(
             tmp_path,
-            vad_filter=True,  # Mantido como True para melhor qualidade
-            beam_size=5,
-            chunk_length=30,  # Tamanho original
-            no_speech_threshold=0.4,  # Valor original
-            temperature=0.0,  # Configuração original
-            condition_on_previous_text=True,  # Original
-            word_timestamps=False
+            vad_filter=False,  # Mantido igual
+            beam_size=5,       # Mantido igual
+            chunk_length=30,   # Mantido igual
+            no_speech_threshold=0.6,  # Mantido igual
+            temperature=(0.0, 0.2, 0.4, 0.6),  # Mantido igual
+            condition_on_previous_text=False,  # Mantido igual
+            word_timestamps=False  # Mantido igual
         )
-        
-        # Processamento com feedback
+
+        # Processamento IDÊNTICO ao código original
         full_transcription = []
         segment_details = []
-        total_duration = info.duration
         
         for segment in segments:
-            # Atualiza progresso sem interferir no processamento
-            progress = min(30 + (segment.end / total_duration * 65), 95)
+            # Atualização do progresso (30-90%)
+            progress = min(30 + (segment.end / info.duration * 60), 90)
             progress_bar.progress(int(progress))
             
-            status_text.text(f"Processando: {segment.end:.1f}s de {total_duration:.1f}s")
+            status_text.text(f"Transcrevendo... {segment.end:.1f}/{info.duration:.1f}s")
             
+            # Lógica original de processamento
             full_transcription.append(segment.text.strip())
             segment_details.append({
                 "start": segment.start,
                 "end": segment.end,
                 "text": segment.text.strip()
             })
-        
-        # Finalização
+
+        # Concatenação IDÊNTICA
         formatted_transcription = "\n\n".join(full_transcription)
         processing_time = time.time() - start_time
         
+        # Finalização (90-100%)
         progress_bar.progress(100)
         status_text.text("Finalizando...")
         time.sleep(0.5)
         progress_bar.empty()
         status_text.empty()
+
+        # Exibição ORIGINAL + métricas
+        st.success(f"Transcrição concluída em {processing_time:.1f} segundos!")
         
-        st.balloons()
-        st.success("Transcrição concluída com sucesso!")
-        
-        # Métricas (sem alterar o layout principal)
+        # Métricas adicionais (sem alterar o layout original)
         st.subheader("📊 Estatísticas")
         col1, col2 = st.columns(2)
+        col1.metric("Duração do Áudio", f"{info.duration:.1f}s")
+        col2.metric("Tempo de Processamento", f"{processing_time:.1f}s")
         
-        with col1:
-            st.metric("Duração do Áudio", f"{total_duration:.1f} segundos")
-            st.metric("Tempo de Processamento", f"{processing_time:.1f} segundos")
-        
-        with col2:
-            st.metric("Idioma Detectado", info.language)
-            st.metric("Caracteres Gerados", len(formatted_transcription))
-        
-        # Transcrição (layout original)
+        # Mantido IDÊNTICO ao original
         st.subheader("📝 Transcrição Completa")
-        st.text_area("Resultado:", formatted_transcription, height=300, label_visibility="collapsed")
-        
-        # Downloads (layout original)
-        st.subheader("⬇️ Opções de Download")
+        st.text_area("Texto transcrito:", formatted_transcription, height=300)
+
+        # Mantido IDÊNTICO ao original
+        st.subheader("⬇️ Baixar Transcrição")
         st.download_button(
-            "Baixar como TXT", 
+            "📄 Baixar como .txt", 
             formatted_transcription.encode('utf-8'), 
-            file_name="transcricao.txt"
+            "transcricao.txt"
         )
         st.download_button(
-            "Baixar como JSON", 
+            "🗂️ Baixar como .json", 
             json.dumps({
                 "metadata": {
-                    "model": model_size,
                     "language": info.language,
-                    "duration": total_duration
+                    "duration": info.duration
                 },
                 "segments": segment_details,
                 "full_text": formatted_transcription
             }, ensure_ascii=False, indent=2), 
-            file_name="transcricao.json"
+            "transcricao.json"
         )
-    
+
     except Exception as e:
         progress_bar.progress(0)
         status_text.text("")
         st.error(f"Erro durante a transcrição: {str(e)}")
-    
     finally:
         try:
             os.remove(tmp_path)
         except:
             pass
 else:
-    st.info("Por favor, carregue um arquivo de áudio para iniciar a transcrição.")
+    st.info("Faça upload de um arquivo de áudio para começar a transcrição.")
