@@ -5,6 +5,9 @@ import os
 import json
 from pathlib import Path
 
+import os
+os.environ["HF_TOKEN"] = st.secrets["HUGGINGFACE_HUB_TOKEN"]
+
 # Título e descrição do app
 st.set_page_config(page_title="Transcritor de Áudio com Whisper", layout="centered")
 st.title("🎧 Transcritor de Áudio com Whisper")
@@ -23,7 +26,7 @@ if uploaded_file is not None:
     st.info("Transcrevendo o áudio, por favor aguarde...")
 
     # Carrega o modelo Whisper otimizado (faster-whisper) com uso forçado da CPU
-    model = WhisperModel("base", device="cpu", compute_type="int8")
+    model = WhisperModel("base", device="cpu", compute_type="int8", hf_token=os.environ["HF_TOKEN"])
     segments, _ = model.transcribe(tmp_path)
 
     # Junta os textos com espaçamento entre frases
