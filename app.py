@@ -3,110 +3,152 @@ from faster_whisper import WhisperModel
 import tempfile
 import os
 import json
-from typing import List, Dict, Any
-
-# Token do Hugging Face via secrets
-os.environ["HF_TOKEN"] = st.secrets.get("HUGGINGFACE_HUB_TOKEN", "")
+import time
 
 # Configuração da página
-st.set_page_config(page_title="Transcritor de Áudio", layout="centered")
-st.title("🎧 Transcritor de Áudio")
+st.set_page_config(page_title="Transcritor de Áudio Premium", layout="centered")
+st.title("🎧 Transcritor de Áudio Profissional")
 st.markdown("""
-Faça upload de um arquivo `.mp3` e receba a transcrição completa.
+Faça upload de arquivos de áudio para obter transcrições de alta qualidade.
 
-> ⚠️ Áudios muito longos podem demorar para serem processados.
-> Certifique-se de que o áudio tenha uma boa qualidade para melhor desempenho.
+> 🔍 Para músicas ou áudios complexos, recomendo usar os modelos **medium** ou **large-v2**.
 """)
 
 # Seletor de modelo
 model_size = st.selectbox(
-    "Escolha o modelo Whisper:",
+    "Selecione o modelo de transcrição:",
     options=["tiny", "base", "small", "medium", "large-v2"],
-    index=2  # small como padrão para melhor equilíbrio qualidade/performance
+    index=2,
+    help="Modelos maiores = melhor qualidade, porém mais lentos"
 )
 
 # Upload do áudio
-uploaded_file = st.file_uploader("Escolha um arquivo de áudio (.mp3, .wav)", type=["mp3", "wav"])
+uploaded_file = st.file_uploader("Carregue seu arquivo de áudio", type=["mp3", "wav", "ogg"])
 
 if uploaded_file is not None:
+    # Informações do arquivo
+    file_size = uploaded_file.size / (1024 * 1024)  # MB
+    st.success(f"✅ Arquivo carregado: {uploaded_file.name} ({file_size:.2f} MB)")
+    
+    # Barra de progresso
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    status_text.text("Preparando ambiente...")
+    
+    # Cria arquivo temporário
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
         tmp.write(uploaded_file.read())
         tmp_path = tmp.name
-
+    
     st.audio(uploaded_file, format='audio/mp3')
     
-    with st.spinner("Transcrevendo o áudio, por favor aguarde... Isso pode levar alguns minutos."):
-        try:
-            # Carrega modelo Whisper com configuração otimizada
-            model = WhisperModel(
-                model_size,
-                device="cpu",
-                compute_type="int8",
-                download_root="./models"  # Cache local para modelos
-            )
-
-            # Configurações melhoradas para transcrição musical
-            segments, info = model.transcribe(
-                tmp_path,
-                vad_filter=False,  # Desativa VAD para músicas
-                beam_size=5,
-                chunk_length=30,  # Chunks menores para melhor processamento
-                no_speech_threshold=0.6,  # Limiar mais alto para não descartar partes
-                temperature=(0.0, 0.2, 0.4, 0.6),  # Variação de temperatura
-                condition_on_previous_text=False,  # Melhor para músicas
-                word_timestamps=False  # Desativa para melhor performance
-            )
-
-            # Processa todos os segmentos
-            full_transcription = []
-            segment_details = []
+    try:
+        # Fase 1: Carregamento do modelo
+        status_text.text("Carregando modelo Whisper...")
+        progress_bar.progress(15)
+        
+        start_time = time.time()
+        
+        model = WhisperModel(
+            model_size,
+            device="cpu",
+            compute_type="int8",
+            download_root="./models"
+        )
+        
+        progress_bar.progress(30)
+        status_text.text("Modelo pronto. Iniciando transcrição...")
+        
+        # Configurações ORIGINAIS que garantiam boa qualidade
+        segments, info = model.transcribe(
+            tmp_path,
+            vad_filter=True,  # Mantido como True para melhor qualidade
+            beam_size=5,
+            chunk_length=30,  # Tamanho original
+            no_speech_threshold=0.4,  # Valor original
+            temperature=0.0,  # Configuração original
+            condition_on_previous_text=True,  # Original
+            word_timestamps=False
+        )
+        
+        # Processamento com feedback
+        full_transcription = []
+        segment_details = []
+        total_duration = info.duration
+        
+        for segment in segments:
+            # Atualiza progresso sem interferir no processamento
+            progress = min(30 + (segment.end / total_duration * 65), 95)
+            progress_bar.progress(int(progress))
             
-            for segment in segments:
-                full_transcription.append(segment.text.strip())
-                segment_details.append({
-                    "start": segment.start,
-                    "end": segment.end,
-                    "text": segment.text.strip()
-                })
-
-            # Concatena transcrição final
-            formatted_transcription = "\n\n".join(full_transcription)
-
-            # Exibe informações sobre o áudio
-            st.success(f"Transcrição concluída! Detalhes do áudio:")
-            st.json({
-                "language": info.language,
-                "language_probability": info.language_probability,
-                "duration": info.duration,
-                "transcription_length": len(formatted_transcription)
+            status_text.text(f"Processando: {segment.end:.1f}s de {total_duration:.1f}s")
+            
+            full_transcription.append(segment.text.strip())
+            segment_details.append({
+                "start": segment.start,
+                "end": segment.end,
+                "text": segment.text.strip()
             })
-
-            # Exibe e permite baixar
-            st.subheader("📝 Transcrição Completa")
-            st.text_area("Texto transcrito:", formatted_transcription, height=300)
-
-            st.subheader("⬇️ Baixar Transcrição")
-            st.download_button(
-                "📄 Baixar como .txt", 
-                formatted_transcription.encode('utf-8'), 
-                "transcricao.txt"
-            )
-            st.download_button(
-                "🗂️ Baixar como .json", 
-                json.dumps({
-                    "metadata": {
-                        "language": info.language,
-                        "duration": info.duration
-                    },
-                    "segments": segment_details,
-                    "full_text": formatted_transcription
-                }, ensure_ascii=False, indent=2), 
-                "transcricao.json"
-            )
-
-        except Exception as e:
-            st.error(f"Erro durante a transcrição: {str(e)}")
-        finally:
+        
+        # Finalização
+        formatted_transcription = "\n\n".join(full_transcription)
+        processing_time = time.time() - start_time
+        
+        progress_bar.progress(100)
+        status_text.text("Finalizando...")
+        time.sleep(0.5)
+        progress_bar.empty()
+        status_text.empty()
+        
+        st.balloons()
+        st.success("Transcrição concluída com sucesso!")
+        
+        # Métricas (sem alterar o layout principal)
+        st.subheader("📊 Estatísticas")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Duração do Áudio", f"{total_duration:.1f} segundos")
+            st.metric("Tempo de Processamento", f"{processing_time:.1f} segundos")
+        
+        with col2:
+            st.metric("Idioma Detectado", info.language)
+            st.metric("Caracteres Gerados", len(formatted_transcription))
+        
+        # Transcrição (layout original)
+        st.subheader("📝 Transcrição Completa")
+        st.text_area("Resultado:", formatted_transcription, height=300, label_visibility="collapsed")
+        
+        # Downloads (layout original)
+        st.subheader("⬇️ Opções de Download")
+        st.download_button(
+            "Baixar como TXT", 
+            formatted_transcription.encode('utf-8'), 
+            file_name="transcricao.txt"
+        )
+        st.download_button(
+            "Baixar como JSON", 
+            json.dumps({
+                "metadata": {
+                    "model": model_size,
+                    "language": info.language,
+                    "duration": total_duration
+                },
+                "segments": segment_details,
+                "full_text": formatted_transcription
+            }, ensure_ascii=False, indent=2), 
+            file_name="transcricao.json"
+        )
+    
+    except Exception as e:
+        progress_bar.progress(0)
+        status_text.text("")
+        st.error(f"Erro durante a transcrição: {str(e)}")
+    
+    finally:
+        try:
             os.remove(tmp_path)
+        except:
+            pass
 else:
-    st.info("Faça upload de um arquivo de áudio para começar a transcrição.")
+    st.info("Por favor, carregue um arquivo de áudio para iniciar a transcrição.")
